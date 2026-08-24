@@ -14,6 +14,15 @@ Canonical flow:
 
 `ChatGPT/Codex -> GitHub mailbox -> GPT VPS Runner -> VPS -> GitHub result`
 
+## Availability policy
+
+- **The GPT VPS Runner is intended to work 24/7.** Do not postpone supported runner operations because of the time of day.
+- DeepSeek is a separate cost-controlled resource. Do not invoke DeepSeek during the agreed peak windows in `America/Tijuana`:
+  - Sunday through Thursday, `18:00-21:00`.
+  - Sunday through Thursday, `23:00-03:00` crossing midnight.
+- Outside those DeepSeek peak windows, DeepSeek may be used if needed and only when the runner explicitly exposes that capability.
+- During a DeepSeek peak window, continue all work that does not require DeepSeek.
+
 ## Legacy mechanism is retired
 
 Do **not** search for, recreate, or use:
@@ -25,6 +34,6 @@ Do **not** search for, recreate, or use:
 - per-project daemons/runners;
 - GitHub Actions/workflows/runners.
 
-If `contrato` is not yet listed as a supported project in the global runner, treat that as a **runner registration/onboarding task**. Do not fall back to the retired daemon.
+`contrato` is registered in the global runner manifest. If the VPS still rejects or does not process it, treat that as a global-runner implementation/configuration issue; do not fall back to the retired daemon.
 
 Use only actions explicitly exposed by the current runner manifest. Hermes/DeepSeek must not be assumed available through the mailbox unless the manifest explicitly enables them.
