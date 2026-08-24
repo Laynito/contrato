@@ -4,24 +4,24 @@ Proyecto independiente para construir una plataforma web que genere contratos la
 
 ## Estado actual
 
-**Fase 0 — definición jurídica y de producto (agosto de 2026).**
+**Fase 1 — implementación técnica del MVP (24 de agosto de 2026).**
 
-Todavía **no se programa la aplicación**. El siguiente entregable es:
+La fase jurídica/producto V1 quedó documentada en PR #2 y el propietario autorizó expresamente pasar a implementación.
 
-> **Contrato Individual de Trabajo V1 — Matriz legal de requisitos y árbol de decisión**
+La instrucción anterior de “no programar todavía la aplicación” queda sustituida por esta fase.
 
-Orden de trabajo aprobado:
+Prioridad de implementación:
 
-1. Investigación jurídica con fuentes oficiales mexicanas vigentes.
-2. Matriz `Campo | clasificación | fuente | regla | pregunta para usuario`.
-3. Árbol de decisión para determinar el tipo de relación/contrato.
-4. Cuestionario completo.
-5. Contrato Individual de Trabajo V1.
-6. Variantes: indeterminado, determinado, temporada, periodo de prueba y capacitación inicial.
-7. Anexos.
-8. Protección de datos, privacidad y derechos ARCO.
-9. Modelo final de créditos/precios.
-10. Diseño técnico del MVP.
+1. mantener como fuente canónica la matriz legal, cuestionario/bloqueos, contrato base, salarios 2026, casos especiales, readiness y handoff del PR #2;
+2. implementar esquema de datos y snapshots/versionado histórico;
+3. implementar motor determinista de reglas;
+4. implementar cuestionario y estados `BORRADOR_INCOMPLETO`, `LISTO_PARA_REVISION`, `COMPLETO`, `BLOQUEADO`;
+5. implementar resolución de salario mínimo por fecha + municipio + ocupación/funciones;
+6. implementar selección de cláusulas y renderizado del contrato/PDF;
+7. convertir los 25 casos jurídicos en pruebas automatizadas y agregar casos de borde;
+8. implementar autenticación, autorización, aislamiento y controles de privacidad;
+9. validar backup/restore, observabilidad y operación en VPS;
+10. sólo declarar `LISTO PARA PRODUCCION` cuando todos los gates estén verdes.
 
 ## Principios no negociables
 
@@ -29,39 +29,37 @@ Orden de trabajo aprobado:
 - Primera versión jurídica: reglas vigentes en 2026, con versionamiento anual.
 - Contratos sencillos, profesionales y entendibles; no documentos inflados artificialmente.
 - La IA puede asistir con lenguaje, clasificación o detección de contradicciones, pero **no inventa la ley**.
-- La lógica jurídica debe vivir en reglas, plantillas y cláusulas aprobadas/versionadas.
-- Los negocios pequeños o con formalización pendiente pueden iniciar el flujo sin exigir estructura corporativa inexistente.
+- La lógica jurídica vive en reglas, plantillas y cláusulas aprobadas/versionadas.
 - La informalidad **no** se presenta como mecanismo para eliminar derechos u obligaciones legales.
 - IMSS no bloquea por sí solo la generación del contrato, pero omitirlo del documento no implica que una obligación legal deje de existir.
 - No generar recibos fiscales falsos ni convertir el MVP en sistema de nómina.
-- No usar contratos por tiempo determinado sin validar la causa que jurídicamente corresponda.
-- No usar cláusulas para renunciar a derechos irrenunciables ni copiar no-competencias estadounidenses de forma superficial.
-- Cuando exista incertidumbre jurídica, marcar `REQUIERE REVISIÓN` en vez de asumir.
-- Conservar históricamente la versión de reglas, plantilla, respuestas y documento final de cada contrato generado.
+- No usar contratos por tiempo determinado sin validar la causa jurídicamente correspondiente.
+- No usar cláusulas para renunciar a derechos irrenunciables.
+- Cuando exista incertidumbre jurídica, marcar `REQUIERE_REVISION_ESPECIAL` en vez de asumir.
+- Conservar históricamente versión de reglas, plantilla, respuestas, fecha y documento final de cada contrato generado.
 
-## Modelo comercial ya decidido
+## Gates duros del motor
+
+Nunca permitir `COMPLETO` cuando exista cualquiera de estos supuestos:
+
+- datos obligatorios faltantes;
+- temporalidad sin causa válida;
+- jornada ordinaria ilegal;
+- salario inferior al mínimo general/profesional aplicable;
+- prestaciones inferiores a mínimos legales;
+- teletrabajo especial incompleto;
+- caso marcado `REQUIERE_REVISION_ESPECIAL` sin resolución humana.
+
+## Modelo comercial
 
 - Cuenta gratuita.
 - Pago por uso mediante créditos; no SaaS mensual obligatorio.
 - `1 crédito = 1 contrato/persona`.
 - Precio de referencia inicial: **$149 MXN por contrato**.
-- Paquetes de 5, 10 y posteriores con descuento, precios aún por validar.
-- El crédito se consume al finalizar/generar el contrato definitivo, no por iniciar un borrador.
+- Paquetes de volumen por definir.
+- El crédito se consume al finalizar/generar el contrato definitivo, no al iniciar un borrador.
 
-## Entregable jurídico V1
-
-Para cada dato, regla y cláusula debe distinguirse entre:
-
-- `OBLIGATORIO POR LEY`
-- `RECOMENDADO`
-- `OPCIONAL`
-- `CONDICIONAL`
-- `NO CONVIENE PREGUNTAR EN ESTE FLUJO`
-- `REQUIERE REVISIÓN ESPECIAL`
-
-Cada conclusión jurídica debe enlazarse a una fuente verificable. Priorizar fuentes oficiales mexicanas y no inventar artículos, requisitos ni vigencias.
-
-## Flujo conceptual
+## Flujo del producto
 
 ```text
 RESPUESTAS DEL USUARIO
@@ -79,53 +77,58 @@ PDF
 SNAPSHOT / VERSIÓN HISTÓRICA
 ```
 
-No se acepta como arquitectura jurídica:
+No se acepta:
 
 ```text
-prompt libre de IA → "hazme un contrato" → PDF
+prompt libre de IA → “hazme un contrato” → PDF
 ```
 
 ## Acceso operativo al VPS — mecanismo canónico
 
-Este proyecto debe usar **un solo GPT VPS Runner global**. El protocolo central está en `Laynito/contaneo`:
+Este proyecto usa un solo **GPT VPS Runner global**. El protocolo central está en `Laynito/contaneo`:
 
 - `docs/GPT-VPS-RUNNER.md`
 - `runner-manifest.json`
 - mailbox: Issue #8 `[GPT VPS RUNNER] Control queue`
 
-Flujo canónico:
+Flujo:
 
 ```text
 ChatGPT/Codex → GitHub mailbox → GPT VPS Runner → VPS → resultado en GitHub
 ```
 
+### Incidente de onboarding detectado 24-08-2026
+
+GitHub ya registra `contrato`, pero el runner físico todavía responde `UNKNOWN_PROJECT` porque mantiene un registro local separado en:
+
+`/home/hermes/.gpt-runner/config/projects.json`
+
+El servicio físico es:
+
+`gpt-vps-runner.service`
+
+El mailbox actual no permite leer/escribir rutas fuera del repositorio (`path escapes repository`), por lo que este incidente debe resolverse en el propio runner global agregando una capacidad segura de sincronización/registro; **no** reconstruir el daemon viejo.
+
 ### Legado retirado — NO USAR
 
-No buscar, reactivar ni recrear el mecanismo anterior de Hermes Autopilot/daemon. En particular, **NO usar**:
+No buscar, reactivar ni recrear:
 
 - `.hermes-autopilot.json`;
-- Issues con prefijo `[HERMES AUTO]`;
-- envelopes `HERMES_JOB`;
-- bridges o daemons por proyecto;
-- GitHub Actions o runners de GitHub como sustituto.
-
-Si `contrato` todavía no aparece registrado en el GPT VPS Runner global, eso se trata como **alta del proyecto en el runner global**, no como motivo para buscar o reconstruir el daemon viejo.
-
-Toda ejecución debe respetar las acciones permitidas por el protocolo central. No inventar shell arbitrario ni capacidades de Hermes/DeepSeek que el manifest no exponga.
+- `[HERMES AUTO]`;
+- `HERMES_JOB`;
+- bridges/daemons por proyecto;
+- GitHub Actions o runners hospedados por GitHub.
 
 ## Reglas de trabajo
 
-- trabajar en branch/worktree aislado cuando se hagan cambios;
+- trabajar en branch/worktree aislado;
 - cambios relevantes mediante PR;
-- no hacer merge a `main` sin autorización del propietario;
-- no tocar producción;
-- **nada de GitHub Actions, workflows ni runners de GitHub**;
-- durante esta fase, producir investigación, matrices y especificaciones, **no código de la aplicación**;
-- dejar evidencia de fuentes y decisiones;
-- si un trabajo dura más de una hora, dejar **un aviso de avance como mínimo cada hora** con estado, hallazgos, bloqueos y siguiente paso.
+- **no hacer merge a `main` ni desplegar sin autorización del propietario**;
+- no tocar producción de otros proyectos;
+- nada de GitHub Actions/workflows/runners;
+- mantener trazabilidad jurídica y técnica;
+- dejar un aviso de avance como mínimo cada hora con estado, hallazgos, bloqueos, siguiente paso y brecha a producción.
 
-## Próxima tarea
+## Objetivo inmediato
 
-**Contrato Individual de Trabajo V1 — Matriz legal de requisitos y árbol de decisión.**
-
-Debe comenzar con investigación de fuentes oficiales vigentes en 2026 y terminar en documentación revisable dentro del repositorio. El diseño técnico de la aplicación viene después.
+Implementar el MVP siguiendo `docs/legal/contrato-v1-handoff-implementacion.md` y cerrar en paralelo el onboarding físico de `contrato` en el GPT VPS Runner global.
