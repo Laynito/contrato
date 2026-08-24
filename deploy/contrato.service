@@ -1,0 +1,28 @@
+[Unit]
+Description=Contrato MX V1
+After=network.target
+
+[Service]
+Type=simple
+User=contrato
+Group=contrato
+WorkingDirectory=/srv/contrato/current
+EnvironmentFile=/etc/contrato/contrato.env
+ExecStart=/usr/bin/node /srv/contrato/current/src/server.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/contrato
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
