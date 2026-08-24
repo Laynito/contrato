@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, signedSessionValue, verifySignedSessionVa
 import { Store } from '../src/store.js';
 import { evaluateContract } from '../src/rules.js';
 import { makePdf, snapshotFor } from '../src/pdf.js';
+import { clientIp } from '../src/network.js';
 
 function completePayload(name='Trabajadora Uno') { return {
   legalYear:2026,
@@ -27,3 +28,6 @@ test('store isolates contracts by user and persists atomically',()=>{const dir=f
 test('finalized snapshot is immutable to later payload mutation',()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'contrato-'));const store=new Store(path.join(dir,'data.json'));const u=store.createUser({email:'a@example.com',name:'A',passwordHash:'x'});const payload=completePayload();const ev=evaluateContract(payload,new Date('2026-08-24T12:00:00Z'));const saved=store.saveContract(u.id,payload,ev);const snap=snapshotFor(payload,ev,'2026-08-24T12:00:00.000Z');const final=store.finalizeContract(u.id,saved.id,snap);payload.worker.name='CAMBIADO';assert.equal(final.snapshot.answers.worker.name,'Trabajadora Uno');assert.throws(()=>store.saveContract(u.id,{...payload,id:saved.id},ev),/CONTRACT_FINALIZED/);fs.rmSync(dir,{recursive:true,force:true})});
 test('snapshot captures complete identity schedule and beneficiary text',()=>{const payload=completePayload();const ev=evaluateContract(payload,new Date('2026-08-24T12:00:00Z'));const snap=snapshotFor(payload,ev,'2026-08-24T12:00:00.000Z');assert.match(snap.renderedText,/PEJ260101AA1/);assert.match(snap.renderedText,/Persona Beneficiaria/);assert.match(snap.renderedText,/09:00 a 17:00/);assert.equal(snap.rulesVersion,'MX-LFT-2026.2');assert.match(snap.sha256,/^[0-9a-f]{64}$/)});
 test('PDF generator emits a valid PDF envelope',()=>{const payload=completePayload();const ev=evaluateContract(payload,new Date('2026-08-24T12:00:00Z'));const snap=snapshotFor(payload,ev);const pdf=makePdf(snap.renderedText);assert.equal(pdf.subarray(0,8).toString('latin1'),'%PDF-1.4');assert.ok(pdf.includes(Buffer.from('%%EOF')));assert.ok(pdf.length>500)});
+test('trusted local nginx proxy isolates different real clients',()=>{const a={socket:{remoteAddress:'127.0.0.1'},headers:{'x-real-ip':'198.51.100.10'}};const b={socket:{remoteAddress:'127.0.0.1'},headers:{'x-real-ip':'198.51.100.11'}};assert.equal(clientIp(a),'198.51.100.10');assert.equal(clientIp(b),'198.51.100.11');assert.notEqual(clientIp(a),clientIp(b))});
+test('direct clients cannot spoof rate-limit identity with X-Real-IP',()=>{const req={socket:{remoteAddress:'203.0.113.9'},headers:{'x-real-ip':'198.51.100.250'}};assert.equal(clientIp(req),'203.0.113.9')});
+test('malformed proxied X-Real-IP falls back to loopback peer',()=>{const req={socket:{remoteAddress:'::1'},headers:{'x-real-ip':'198.51.100.10, 203.0.113.2'}};assert.equal(clientIp(req),'::1')});
