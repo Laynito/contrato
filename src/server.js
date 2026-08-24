@@ -8,6 +8,7 @@ import { evaluateContract } from './rules.js';
 import { RULES_VERSION, TEMPLATE_VERSION } from './legal.js';
 import { clearSessionCookie, hashPassword, newSessionId, parseCookies, sessionCookie, signedSessionValue, verifyPassword, verifySignedSessionValue } from './auth.js';
 import { makePdf, snapshotFor } from './pdf.js';
+import { clientIp } from './network.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -63,12 +64,8 @@ async function readJson(req) {
   catch { throw Object.assign(new Error('INVALID_JSON'), { status: 400 }); }
 }
 
-function requestIp(req) {
-  return req.socket.remoteAddress || 'unknown';
-}
-
 function rateLimit(req) {
-  const key = requestIp(req);
+  const key = clientIp(req);
   const now = Date.now();
   const item = authRate.get(key) || { start: now, count: 0 };
   if (now - item.start > 10 * 60 * 1000) { item.start = now; item.count = 0; }
