@@ -85,27 +85,44 @@ No se acepta como arquitectura jurídica:
 prompt libre de IA → "hazme un contrato" → PDF
 ```
 
-## Trabajo mediante Hermes Autopilot
+## Acceso operativo al VPS — mecanismo canónico
 
-Este repositorio está preparado para trabajar mediante el bridge **GitHub → VPS → Hermes → GitHub PR**.
+Este proyecto debe usar **un solo GPT VPS Runner global**. El protocolo central está en `Laynito/contaneo`:
 
-Los trabajos deben abrirse como Issues con título:
+- `docs/GPT-VPS-RUNNER.md`
+- `runner-manifest.json`
+- mailbox: Issue #8 `[GPT VPS RUNNER] Control queue`
+
+Flujo canónico:
 
 ```text
-[HERMES AUTO] <tarea>
+ChatGPT/Codex → GitHub mailbox → GPT VPS Runner → VPS → resultado en GitHub
 ```
 
-y un envelope `HERMES_JOB` válido.
+### Legado retirado — NO USAR
 
-Reglas del proyecto:
+No buscar, reactivar ni recrear el mecanismo anterior de Hermes Autopilot/daemon. En particular, **NO usar**:
 
-- trabajar en branch/worktree aislado;
+- `.hermes-autopilot.json`;
+- Issues con prefijo `[HERMES AUTO]`;
+- envelopes `HERMES_JOB`;
+- bridges o daemons por proyecto;
+- GitHub Actions o runners de GitHub como sustituto.
+
+Si `contrato` todavía no aparece registrado en el GPT VPS Runner global, eso se trata como **alta del proyecto en el runner global**, no como motivo para buscar o reconstruir el daemon viejo.
+
+Toda ejecución debe respetar las acciones permitidas por el protocolo central. No inventar shell arbitrario ni capacidades de Hermes/DeepSeek que el manifest no exponga.
+
+## Reglas de trabajo
+
+- trabajar en branch/worktree aislado cuando se hagan cambios;
 - cambios relevantes mediante PR;
 - no hacer merge a `main` sin autorización del propietario;
 - no tocar producción;
+- **nada de GitHub Actions, workflows ni runners de GitHub**;
 - durante esta fase, producir investigación, matrices y especificaciones, **no código de la aplicación**;
-- dejar evidencia de fuentes y de decisiones;
-- si un trabajo dura más de una hora, debe dejar **un aviso de avance como mínimo cada hora** en el Issue de trabajo, indicando estado, hallazgos, bloqueos y siguiente paso; nunca esperar hasta el final para reportar una ejecución larga.
+- dejar evidencia de fuentes y decisiones;
+- si un trabajo dura más de una hora, dejar **un aviso de avance como mínimo cada hora** con estado, hallazgos, bloqueos y siguiente paso.
 
 ## Próxima tarea
 
