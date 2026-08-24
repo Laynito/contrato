@@ -1,4 +1,4 @@
-export const RULES_VERSION = 'MX-LFT-2026.1';
+export const RULES_VERSION = 'MX-LFT-2026.2';
 export const TEMPLATE_VERSION = 'CONTRATO-V1.0';
 
 export const WEEKLY_HOURS_BY_YEAR = Object.freeze({
@@ -11,10 +11,16 @@ export const WEEKLY_HOURS_BY_YEAR = Object.freeze({
 
 export const WEEKLY_OVERTIME_BY_YEAR = Object.freeze({
   2026: 9,
-  2027: 10,
-  2028: 11,
-  2029: 12,
+  2027: 9,
+  2028: 10,
+  2029: 11,
   2030: 12,
+});
+
+export const DAILY_HOURS_BY_SHIFT = Object.freeze({
+  DIURNA: 8,
+  NOCTURNA: 7,
+  MIXTA: 7.5,
 });
 
 export const MINIMUM_WAGE_2026 = Object.freeze({
