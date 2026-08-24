@@ -7,11 +7,11 @@ const NOW = new Date('2026-08-24T12:00:00Z');
 function base(overrides = {}) {
   const value = {
     legalYear: 2026,
-    employer: { name: 'Comercial Ejemplo SA de CV', address: 'Tijuana, Baja California' },
+    employer: { name: 'Comercial Ejemplo SA de CV', nationality: 'Mexicana', rfc: 'CEJ260101AA1', address: 'Tijuana, Baja California', legalEntity: false, representative: '' },
     worker: { name: 'Persona Trabajadora', address: 'Tijuana, Baja California', birthDate: '1990-01-01', nationality: 'Mexicana', sex: 'Femenino', civilStatus: 'Soltera', curp: 'TEST900101MBCXXX01', rfc: 'TEST900101AA1', beneficiaries: 'Beneficiario Ejemplo, familiar' },
-    job: { title: 'Auxiliar administrativo', description: 'Captura pedidos, integra expedientes y atiende consultas administrativas.', workplace: 'Tijuana, Baja California', materialWork: false },
+    job: { title: 'Auxiliar administrativo', description: 'Captura pedidos, integra expedientes y atiende consultas administrativas.', workplace: 'Tijuana, Baja California', municipality: 'Tijuana', materialWork: false },
     relation: { type: 'INDETERMINADO', startDate: '2026-08-24', temporaryCauseCategory: '', temporaryCause: '', workDescription: '', seasonDescription: '', priorTrainingOrTrial: false, continuesAfterTrial: false },
-    schedule: { weeklyHours: 48, plannedOvertimeHours: 0 },
+    schedule: { shiftType: 'DIURNA', dailyHours: 8, weeklyHours: 48, workDaysCount: 6, weeklyRestDay: 'Domingo', startTime: '09:00', endTime: '17:00', breakMinutes: 0, plannedOvertimeHours: 0 },
     salary: { daily: 500, zone: 'ZLFN', professionalClassification: 'NONE', professionalMinimumDaily: 0, paymentFrequency: 'Semanal', paymentMethod: 'Transferencia' },
     benefits: { aguinaldoDays: 15, vacationDays: 12, vacationPremiumPercent: 25 },
     modality: { presential100: false },
@@ -37,7 +37,7 @@ test('06 horas extra ocasionales dentro del límite 2026 no bloquean', () => exp
 test('07 salario $400 en ZLFN se bloquea', () => expectStatus(base({ salary: { daily: 400 } }), 'BLOQUEADO'));
 test('08 ocupación profesional ambigua requiere revisión', () => expectStatus(base({ salary: { professionalClassification: 'AMBIGUOUS' } }), 'LISTO_PARA_REVISION'));
 test('09 RFC y beneficiarios faltantes dejan borrador incompleto', () => expectStatus(base({ worker: { rfc: '', beneficiaries: '' } }), 'BORRADOR_INCOMPLETO'));
-test('10 intento de renuncia IMSS se bloquea', () => { const r=evaluateContract(base({ imss:{ provided:false, waiverAttempted:true } }),NOW); expectStatus(base({ imss:{ provided:false, waiverAttempted:true } }),'BLOQUEADO'); hasCode(r,'blockers','IMSS_WAIVER_REJECTED'); });
+test('10 intento de renuncia IMSS se bloquea', () => { const r=evaluateContract(base({ imss:{ provided:false, waiverAttempted:true } }),NOW); assert.equal(r.status,'BLOQUEADO'); hasCode(r,'blockers','IMSS_WAIVER_REJECTED'); });
 test('11 teletrabajo 60% incompleto se bloquea', () => expectStatus(base({ telework: { percent: 60 } }), 'BLOQUEADO'));
 test('12 híbrido 40% exacto no activa automáticamente teletrabajo especial', () => expectStatus(base({ telework: { percent: 40 } }), 'COMPLETO'));
 test('13 trabajador de 17 años requiere revisión especial', () => expectStatus(base({ worker: { birthDate: '2009-01-01' } }), 'LISTO_PARA_REVISION'));
@@ -53,3 +53,12 @@ test('22 continuidad posterior a prueba exige conversión a indeterminado', () =
 test('23 funciones excesivamente abiertas se bloquean', () => expectStatus(base({ job:{ description:'cualquier actividad que ordene el patrón' } }), 'BLOQUEADO'));
 test('24 pago mensual a trabajador material se bloquea', () => { const r=evaluateContract(base({ job:{ materialWork:true }, salary:{ paymentFrequency:'Mensual' } }),NOW); assert.equal(r.status,'BLOQUEADO'); hasCode(r,'blockers','MATERIAL_WORK_PAY_INTERVAL'); });
 test('25 faltantes del art. 25 conservan borrador y pendientes', () => { const input=base({ worker:{ rfc:'', beneficiaries:'' }, employer:{ address:'' } }); const r=evaluateContract(input,NOW); assert.equal(r.status,'BORRADOR_INCOMPLETO'); assert.ok(r.incomplete.length>=3); assert.equal(r.finalizable,false); });
+
+test('regresión 2027: 9 horas extraordinarias permitidas, 10 bloqueadas', () => {
+  assert.equal(evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:7.5, workDaysCount:6, startTime:'09:00', endTime:'16:30', plannedOvertimeHours:9 } }),NOW).status,'COMPLETO');
+  const r=evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:7.5, workDaysCount:6, startTime:'09:00', endTime:'16:30', plannedOvertimeHours:10 } }),NOW);
+  assert.equal(r.status,'BLOQUEADO'); hasCode(r,'blockers','OVERTIME_EXCEEDED');
+});
+test('jornada nocturna superior a 7 horas se bloquea',()=>{const r=evaluateContract(base({schedule:{shiftType:'NOCTURNA',dailyHours:8,startTime:'22:00',endTime:'06:00',weeklyHours:42,workDaysCount:6}}),NOW);assert.equal(r.status,'BLOQUEADO');hasCode(r,'blockers','DAILY_HOURS_EXCEEDED')});
+test('horario contradictorio con horas declaradas se bloquea',()=>{const r=evaluateContract(base({schedule:{dailyHours:8,startTime:'09:00',endTime:'18:00',breakMinutes:0}}),NOW);assert.equal(r.status,'BLOQUEADO');hasCode(r,'blockers','SCHEDULE_HOURS_CONTRADICTION')});
+test('Tijuana no puede usar zona salarial general',()=>{const r=evaluateContract(base({salary:{zone:'GENERAL',daily:500}}),NOW);assert.equal(r.status,'BLOQUEADO');hasCode(r,'blockers','TIJUANA_REQUIRES_ZLFN')});
