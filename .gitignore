@@ -1,0 +1,7 @@
+node_modules/
+.env
+var/*.json
+var/*.tmp
+var/*.bak
+*.log
+.DS_Store
