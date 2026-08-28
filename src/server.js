@@ -9,6 +9,7 @@ import { RULES_VERSION, TEMPLATE_VERSION } from './legal.js';
 import { clearSessionCookie, hashPassword, newSessionId, parseCookies, sessionCookie, signedSessionValue, verifyPassword, verifySignedSessionValue } from './auth.js';
 import { makePdf, snapshotFor } from './pdf.js';
 import { clientIp } from './network.js';
+import { requireControlPlane, summarizeContract } from './internal-api.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -18,6 +19,7 @@ const host = process.env.HOST || '127.0.0.1';
 const dataFile = process.env.DATA_FILE || path.join(root, 'var', 'data.json');
 const publicOrigin = process.env.PUBLIC_ORIGIN || '';
 const sessionSecret = process.env.SESSION_SECRET || (isProduction ? '' : crypto.randomBytes(48).toString('hex'));
+const controlPlaneToken = process.env.CONTANEO_INTERNAL_TOKEN || '';
 if (isProduction && sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
 if (isProduction && !publicOrigin) throw new Error('PUBLIC_ORIGIN is required in production');
 
@@ -127,6 +129,33 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return sendJson(res, 200, { ok: true, service: 'contrato-mx', rulesVersion: RULES_VERSION, templateVersion: TEMPLATE_VERSION, time: new Date().toISOString() });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/internal/control-plane/contracts') {
+      if (!requireControlPlane(req, res, sendJson, controlPlaneToken)) return;
+      const contracts = store.listContractsForControlPlane().map(summarizeContract);
+      return sendJson(res, 200, {
+        service: 'contrato-mx',
+        rulesVersion: RULES_VERSION,
+        templateVersion: TEMPLATE_VERSION,
+        contracts,
+      });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/internal/control-plane/summary') {
+      if (!requireControlPlane(req, res, sendJson, controlPlaneToken)) return;
+      const contracts = store.listContractsForControlPlane().map(summarizeContract);
+      const counts = contracts.reduce((acc, contract) => {
+        acc[contract.status] = (acc[contract.status] || 0) + 1;
+        return acc;
+      }, {});
+      return sendJson(res, 200, {
+        service: 'contrato-mx',
+        rulesVersion: RULES_VERSION,
+        templateVersion: TEMPLATE_VERSION,
+        totalContracts: contracts.length,
+        counts,
+      });
     }
 
     if (req.method === 'GET' && staticFiles.has(url.pathname)) {
