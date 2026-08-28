@@ -102,6 +102,24 @@ export class Store {
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   }
 
+  listContractsForControlPlane() {
+    return this.data.contracts
+      .map((contract) => structuredClone({
+        id: contract.id,
+        userId: contract.userId,
+        createdAt: contract.createdAt,
+        updatedAt: contract.updatedAt,
+        finalizedAt: contract.finalizedAt,
+        evaluation: contract.evaluation || null,
+        snapshot: contract.snapshot ? {
+          rulesVersion: contract.snapshot.rulesVersion || null,
+          templateVersion: contract.snapshot.templateVersion || null,
+          sha256: contract.snapshot.sha256 || null,
+        } : null,
+      }))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  }
+
   getContract(userId, id) {
     const contract = this.data.contracts.find((c) => c.id === id && c.userId === userId);
     return contract ? structuredClone(contract) : null;
