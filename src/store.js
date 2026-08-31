@@ -83,7 +83,7 @@ export class Store {
     if (existing?.finalizedAt) throw new Error('CONTRACT_FINALIZED');
 
     if (!existing) {
-      existing = { id: crypto.randomUUID(), userId, createdAt: now, finalizedAt: null, snapshot: null };
+      existing = { id: crypto.randomUUID(), userId, createdAt: now, finalizedAt: null, snapshot: null, finalizationOperation: null };
       this.data.contracts.push(existing);
     }
 
@@ -102,6 +102,24 @@ export class Store {
       .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   }
 
+  listContractsForControlPlane() {
+    return this.data.contracts
+      .map((contract) => structuredClone({
+        id: contract.id,
+        userId: contract.userId,
+        createdAt: contract.createdAt,
+        updatedAt: contract.updatedAt,
+        finalizedAt: contract.finalizedAt,
+        evaluation: contract.evaluation || null,
+        snapshot: contract.snapshot ? {
+          rulesVersion: contract.snapshot.rulesVersion || null,
+          templateVersion: contract.snapshot.templateVersion || null,
+          sha256: contract.snapshot.sha256 || null,
+        } : null,
+      }))
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+  }
+
   getContract(userId, id) {
     const contract = this.data.contracts.find((c) => c.id === id && c.userId === userId);
     return contract ? structuredClone(contract) : null;
@@ -117,5 +135,75 @@ export class Store {
     contract.snapshot = structuredClone(snapshot);
     this.#persist();
     return structuredClone(contract);
+  }
+
+  prepareFinalization(userId, id, idempotencyKey) {
+    const contract = this.data.contracts.find((c) => c.id === id && c.userId === userId);
+    if (!contract) throw new Error('CONTRACT_NOT_FOUND');
+    if (contract.finalizedAt) return structuredClone(contract);
+    if (contract.evaluation?.status !== 'COMPLETO') throw new Error('CONTRACT_NOT_FINALIZABLE');
+
+    const existing = contract.finalizationOperation;
+    if (existing && existing.idempotencyKey !== idempotencyKey) {
+      throw new Error('FINALIZATION_OPERATION_CONFLICT');
+    }
+    if (existing?.state === 'credit_reversed') {
+      throw new Error('FINALIZATION_REVERSED_REVIEW_REQUIRED');
+    }
+
+    contract.finalizationOperation = {
+      idempotencyKey,
+      state: existing?.state === 'credit_consumed' ? 'credit_consumed' : 'pending_credit',
+      updatedAt: new Date().toISOString(),
+    };
+    this.#persist();
+    return structuredClone(contract);
+  }
+
+  markCreditConsumed(userId, id, idempotencyKey, ledgerEntryId) {
+    const contract = this.#operationContract(userId, id, idempotencyKey);
+    if (contract.finalizedAt) return structuredClone(contract);
+    contract.finalizationOperation = {
+      idempotencyKey,
+      state: 'credit_consumed',
+      ledgerEntryId,
+      updatedAt: new Date().toISOString(),
+    };
+    this.#persist();
+    return structuredClone(contract);
+  }
+
+  finalizeWithCredit(userId, id, snapshot, idempotencyKey) {
+    const contract = this.#operationContract(userId, id, idempotencyKey);
+    if (contract.finalizedAt) return structuredClone(contract);
+    if (contract.finalizationOperation?.state !== 'credit_consumed') throw new Error('CREDIT_NOT_CONSUMED');
+    contract.finalizedAt = new Date().toISOString();
+    contract.updatedAt = contract.finalizedAt;
+    contract.snapshot = structuredClone(snapshot);
+    contract.finalizationOperation.state = 'finalized';
+    contract.finalizationOperation.updatedAt = contract.finalizedAt;
+    this.#persist();
+    return structuredClone(contract);
+  }
+
+  markCreditReversed(userId, id, idempotencyKey) {
+    const contract = this.#operationContract(userId, id, idempotencyKey);
+    if (contract.finalizedAt) throw new Error('CONTRACT_FINALIZED');
+    contract.finalizationOperation = {
+      idempotencyKey,
+      state: 'credit_reversed',
+      updatedAt: new Date().toISOString(),
+    };
+    this.#persist();
+    return structuredClone(contract);
+  }
+
+  #operationContract(userId, id, idempotencyKey) {
+    const contract = this.data.contracts.find((c) => c.id === id && c.userId === userId);
+    if (!contract) throw new Error('CONTRACT_NOT_FOUND');
+    if (contract.finalizationOperation?.idempotencyKey !== idempotencyKey) {
+      throw new Error('FINALIZATION_OPERATION_CONFLICT');
+    }
+    return contract;
   }
 }

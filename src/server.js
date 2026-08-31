@@ -9,6 +9,8 @@ import { RULES_VERSION, TEMPLATE_VERSION } from './legal.js';
 import { clearSessionCookie, hashPassword, newSessionId, parseCookies, sessionCookie, signedSessionValue, verifyPassword, verifySignedSessionValue } from './auth.js';
 import { makePdf, snapshotFor } from './pdf.js';
 import { clientIp } from './network.js';
+import { requireControlPlane, summarizeContract } from './internal-api.js';
+import { ContaneoCreditClient, CreditServiceError } from './contaneo-credit-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -18,6 +20,11 @@ const host = process.env.HOST || '127.0.0.1';
 const dataFile = process.env.DATA_FILE || path.join(root, 'var', 'data.json');
 const publicOrigin = process.env.PUBLIC_ORIGIN || '';
 const sessionSecret = process.env.SESSION_SECRET || (isProduction ? '' : crypto.randomBytes(48).toString('hex'));
+const controlPlaneToken = process.env.CONTANEO_INTERNAL_TOKEN || '';
+const creditClient = new ContaneoCreditClient({
+  baseUrl: process.env.CONTANEO_INTERNAL_BASE_URL || '',
+  token: process.env.CONTANEO_CALLBACK_TOKEN || '',
+});
 if (isProduction && sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
 if (isProduction && !publicOrigin) throw new Error('PUBLIC_ORIGIN is required in production');
 
@@ -129,6 +136,33 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, service: 'contrato-mx', rulesVersion: RULES_VERSION, templateVersion: TEMPLATE_VERSION, time: new Date().toISOString() });
     }
 
+    if (req.method === 'GET' && url.pathname === '/internal/control-plane/contracts') {
+      if (!requireControlPlane(req, res, sendJson, controlPlaneToken)) return;
+      const contracts = store.listContractsForControlPlane().map(summarizeContract);
+      return sendJson(res, 200, {
+        service: 'contrato-mx',
+        rulesVersion: RULES_VERSION,
+        templateVersion: TEMPLATE_VERSION,
+        contracts,
+      });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/internal/control-plane/summary') {
+      if (!requireControlPlane(req, res, sendJson, controlPlaneToken)) return;
+      const contracts = store.listContractsForControlPlane().map(summarizeContract);
+      const counts = contracts.reduce((acc, contract) => {
+        acc[contract.status] = (acc[contract.status] || 0) + 1;
+        return acc;
+      }, {});
+      return sendJson(res, 200, {
+        service: 'contrato-mx',
+        rulesVersion: RULES_VERSION,
+        templateVersion: TEMPLATE_VERSION,
+        totalContracts: contracts.length,
+        counts,
+      });
+    }
+
     if (req.method === 'GET' && staticFiles.has(url.pathname)) {
       const [relative, type] = staticFiles.get(url.pathname);
       return sendText(res, 200, fs.readFileSync(path.join(root, relative), 'utf8'), type);
@@ -204,8 +238,30 @@ const server = http.createServer(async (req, res) => {
       const evaluation = evaluateContract(contract.payload);
       if (!evaluation.finalizable) return sendJson(res, 422, { error: 'CONTRACT_NOT_FINALIZABLE', evaluation });
       const snapshot = snapshotFor(contract.payload, evaluation);
-      const finalized = store.finalizeContract(auth.user.id, contract.id, snapshot);
-      return sendJson(res, 200, { contract: sanitizeContractForResponse(finalized), pdfUrl: `/api/contracts/${contract.id}/pdf` });
+      const operationKey = `contract-finalize:v1:${contract.id}`;
+      store.prepareFinalization(auth.user.id, contract.id, operationKey);
+
+      let consumption;
+      try {
+        consumption = await creditClient.consume(auth.user.id, contract.id);
+        store.markCreditConsumed(auth.user.id, contract.id, operationKey, consumption.entry_id);
+      } catch (error) {
+        if (error instanceof CreditServiceError) return sendJson(res, error.status, { error: error.code });
+        throw error;
+      }
+
+      try {
+        const finalized = store.finalizeWithCredit(auth.user.id, contract.id, snapshot, operationKey);
+        return sendJson(res, 200, { contract: sanitizeContractForResponse(finalized), pdfUrl: `/api/contracts/${contract.id}/pdf` });
+      } catch (finalizationError) {
+        try {
+          await creditClient.reverse(auth.user.id, contract.id);
+          store.markCreditReversed(auth.user.id, contract.id, operationKey);
+        } catch (reversalError) {
+          console.error(JSON.stringify({ level: 'error', event: 'finalization_compensation_required', contractId: contract.id, error: reversalError.message }));
+        }
+        throw finalizationError;
+      }
     }
 
     const pdfMatch = url.pathname.match(/^\/api\/contracts\/([0-9a-f-]+)\/pdf$/i);
@@ -221,7 +277,7 @@ const server = http.createServer(async (req, res) => {
 
     return sendJson(res, 404, { error: 'NOT_FOUND' });
   } catch (error) {
-    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND'];
+    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND', 'FINALIZATION_OPERATION_CONFLICT', 'FINALIZATION_REVERSED_REVIEW_REQUIRED', 'CREDIT_NOT_CONSUMED'];
     if (known.includes(error.message)) return sendJson(res, error.message === 'CONTRACT_NOT_FOUND' ? 404 : 409, { error: error.message });
     const status = error.status || 500;
     if (status >= 500) console.error(JSON.stringify({ level: 'error', event: 'request_failed', method: req.method, path: url.pathname, error: error.message }));
