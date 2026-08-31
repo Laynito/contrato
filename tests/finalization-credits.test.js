@@ -68,7 +68,9 @@ test('store records an idempotent compensation state before retry', () => {
   store.markCreditConsumed(user.id, contract.id, key, 'ledger-entry-1');
   const reversed = store.markCreditReversed(user.id, contract.id, key);
   assert.equal(reversed.finalizationOperation.state, 'credit_reversed');
-  const retry = store.prepareFinalization(user.id, contract.id, key);
-  assert.equal(retry.finalizationOperation.state, 'pending_credit');
+  assert.throws(
+    () => store.prepareFinalization(user.id, contract.id, key),
+    /FINALIZATION_REVERSED_REVIEW_REQUIRED/,
+  );
   fs.rmSync(dir, { recursive: true, force: true });
 });

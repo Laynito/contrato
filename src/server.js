@@ -277,7 +277,7 @@ const server = http.createServer(async (req, res) => {
 
     return sendJson(res, 404, { error: 'NOT_FOUND' });
   } catch (error) {
-    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND', 'FINALIZATION_OPERATION_CONFLICT', 'CREDIT_NOT_CONSUMED'];
+    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND', 'FINALIZATION_OPERATION_CONFLICT', 'FINALIZATION_REVERSED_REVIEW_REQUIRED', 'CREDIT_NOT_CONSUMED'];
     if (known.includes(error.message)) return sendJson(res, error.message === 'CONTRACT_NOT_FOUND' ? 404 : 409, { error: error.message });
     const status = error.status || 500;
     if (status >= 500) console.error(JSON.stringify({ level: 'error', event: 'request_failed', method: req.method, path: url.pathname, error: error.message }));

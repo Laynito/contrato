@@ -147,6 +147,9 @@ export class Store {
     if (existing && existing.idempotencyKey !== idempotencyKey) {
       throw new Error('FINALIZATION_OPERATION_CONFLICT');
     }
+    if (existing?.state === 'credit_reversed') {
+      throw new Error('FINALIZATION_REVERSED_REVIEW_REQUIRED');
+    }
 
     contract.finalizationOperation = {
       idempotencyKey,
