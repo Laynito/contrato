@@ -10,6 +10,7 @@ import { clearSessionCookie, hashPassword, newSessionId, parseCookies, sessionCo
 import { makePdf, snapshotFor } from './pdf.js';
 import { clientIp } from './network.js';
 import { requireControlPlane, summarizeContract } from './internal-api.js';
+import { ContaneoCreditClient, CreditServiceError } from './contaneo-credit-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -20,6 +21,10 @@ const dataFile = process.env.DATA_FILE || path.join(root, 'var', 'data.json');
 const publicOrigin = process.env.PUBLIC_ORIGIN || '';
 const sessionSecret = process.env.SESSION_SECRET || (isProduction ? '' : crypto.randomBytes(48).toString('hex'));
 const controlPlaneToken = process.env.CONTANEO_INTERNAL_TOKEN || '';
+const creditClient = new ContaneoCreditClient({
+  baseUrl: process.env.CONTANEO_INTERNAL_BASE_URL || '',
+  token: process.env.CONTANEO_CALLBACK_TOKEN || '',
+});
 if (isProduction && sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters in production');
 if (isProduction && !publicOrigin) throw new Error('PUBLIC_ORIGIN is required in production');
 
@@ -233,8 +238,30 @@ const server = http.createServer(async (req, res) => {
       const evaluation = evaluateContract(contract.payload);
       if (!evaluation.finalizable) return sendJson(res, 422, { error: 'CONTRACT_NOT_FINALIZABLE', evaluation });
       const snapshot = snapshotFor(contract.payload, evaluation);
-      const finalized = store.finalizeContract(auth.user.id, contract.id, snapshot);
-      return sendJson(res, 200, { contract: sanitizeContractForResponse(finalized), pdfUrl: `/api/contracts/${contract.id}/pdf` });
+      const operationKey = `contract-finalize:v1:${contract.id}`;
+      store.prepareFinalization(auth.user.id, contract.id, operationKey);
+
+      let consumption;
+      try {
+        consumption = await creditClient.consume(auth.user.id, contract.id);
+        store.markCreditConsumed(auth.user.id, contract.id, operationKey, consumption.entry_id);
+      } catch (error) {
+        if (error instanceof CreditServiceError) return sendJson(res, error.status, { error: error.code });
+        throw error;
+      }
+
+      try {
+        const finalized = store.finalizeWithCredit(auth.user.id, contract.id, snapshot, operationKey);
+        return sendJson(res, 200, { contract: sanitizeContractForResponse(finalized), pdfUrl: `/api/contracts/${contract.id}/pdf` });
+      } catch (finalizationError) {
+        try {
+          await creditClient.reverse(auth.user.id, contract.id);
+          store.markCreditReversed(auth.user.id, contract.id, operationKey);
+        } catch (reversalError) {
+          console.error(JSON.stringify({ level: 'error', event: 'finalization_compensation_required', contractId: contract.id, error: reversalError.message }));
+        }
+        throw finalizationError;
+      }
     }
 
     const pdfMatch = url.pathname.match(/^\/api\/contracts\/([0-9a-f-]+)\/pdf$/i);
@@ -250,7 +277,7 @@ const server = http.createServer(async (req, res) => {
 
     return sendJson(res, 404, { error: 'NOT_FOUND' });
   } catch (error) {
-    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND'];
+    const known = ['CONTRACT_FINALIZED', 'CONTRACT_NOT_FOUND', 'FINALIZATION_OPERATION_CONFLICT', 'CREDIT_NOT_CONSUMED'];
     if (known.includes(error.message)) return sendJson(res, error.message === 'CONTRACT_NOT_FOUND' ? 404 : 409, { error: error.message });
     const status = error.status || 500;
     if (status >= 500) console.error(JSON.stringify({ level: 'error', event: 'request_failed', method: req.method, path: url.pathname, error: error.message }));
