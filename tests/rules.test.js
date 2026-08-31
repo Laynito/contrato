@@ -55,8 +55,8 @@ test('24 pago mensual a trabajador material se bloquea', () => { const r=evaluat
 test('25 faltantes del art. 25 conservan borrador y pendientes', () => { const input=base({ worker:{ rfc:'', beneficiaries:'' }, employer:{ address:'' } }); const r=evaluateContract(input,NOW); assert.equal(r.status,'BORRADOR_INCOMPLETO'); assert.ok(r.incomplete.length>=3); assert.equal(r.finalizable,false); });
 
 test('regresión 2027: 9 horas extraordinarias permitidas, 10 bloqueadas', () => {
-  assert.equal(evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:7.5, workDaysCount:6, startTime:'09:00', endTime:'16:30', plannedOvertimeHours:9 } }),NOW).status,'COMPLETO');
-  const r=evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:7.5, workDaysCount:6, startTime:'09:00', endTime:'16:30', plannedOvertimeHours:10 } }),NOW);
+  assert.equal(evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:46/6, workDaysCount:6, startTime:'09:00', endTime:'16:40', plannedOvertimeHours:9 } }),NOW).status,'COMPLETO');
+  const r=evaluateContract(base({ legalYear:2027, schedule:{ weeklyHours:46, dailyHours:46/6, workDaysCount:6, startTime:'09:00', endTime:'16:40', plannedOvertimeHours:10 } }),NOW);
   assert.equal(r.status,'BLOQUEADO'); hasCode(r,'blockers','OVERTIME_EXCEEDED');
 });
 test('jornada nocturna superior a 7 horas se bloquea',()=>{const r=evaluateContract(base({schedule:{shiftType:'NOCTURNA',dailyHours:8,startTime:'22:00',endTime:'06:00',weeklyHours:42,workDaysCount:6}}),NOW);assert.equal(r.status,'BLOQUEADO');hasCode(r,'blockers','DAILY_HOURS_EXCEEDED')});
